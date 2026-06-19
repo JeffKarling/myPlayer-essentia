@@ -1,0 +1,123 @@
+name: Build and Publish RPM
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-rpm:
+    runs-on: ubuntu-latest
+    container:
+      image: fedora:42
+
+    steps:
+      - name: Install RPM build tools and build dependencies
+        run: |
+          dnf install -y \
+            rpm-build \
+            rpmdevtools \
+            rpmlint \
+            gcc-c++ \
+            python3 \
+            pkgconfig \
+            eigen3-devel \
+            libsamplerate-devel \
+            taglib-devel \
+            libyaml-devel \
+            libchromaprint-devel \
+            ffmpeg-free-devel \
+            curl \
+            tar
+
+      - name: Install Intel oneAPI MKL
+        run: |
+          # Add Intel oneAPI repository
+          cat <<'EOF' > /etc/yum.repos.d/oneAPI.repo
+          [oneAPI]
+          name=Intel® oneAPI repository
+          baseurl=https://yum.repos.intel.com/oneapi
+          enabled=1
+          gpgcheck=1
+          repo_gpgcheck=1
+          gpgkey=https://yum.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB
+          EOF
+          dnf install -y intel-oneapi-mkl-devel
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Prepare rpmbuild environment
+        run: |
+          rpmdev-setuptree
+          # Copy packaging files into rpmbuild tree
+          cp essentia.spec ~/rpmbuild/SPECS/
+          cp README.MKL ~/rpmbuild/SOURCES/
+
+      - name: Download upstream essentia source tarball
+        run: |
+          # Download MTG/essentia v2.1_beta6 source and rename to match spec Source0
+          curl -L \
+            "https://github.com/MTG/essentia/archive/v2.1_beta6.tar.gz" \
+            -o ~/rpmbuild/SOURCES/essentia-2.1_beta6.tar.gz
+
+      - name: Build RPMs
+        run: |
+          rpmbuild -ba ~/rpmbuild/SPECS/essentia.spec
+
+      - name: List built RPMs
+        run: |
+          find ~/rpmbuild/RPMS -name "*.rpm" | sort
+
+      - name: Upload RPMs as workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: essentia-rpms-fc42
+          path: ~/rpmbuild/RPMS/**/*.rpm
+          retention-days: 30
+
+      - name: Publish RPMs to GitHub Release (on tag push)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          dnf install -y gh
+          TAG="${GITHUB_REF#refs/tags/}"
+          # Create release if it doesn't exist yet
+          gh release create "${TAG}" \
+            --repo "${{ github.repository }}" \
+            --title "Essentia ${TAG} — Fedora 42 RPMs" \
+            --notes "## Essentia ${TAG} — Fedora 42 x86_64
+
+          Built on Fedora 42 with static Intel oneMKL FFT integration.
+
+          ### Packages
+          - \`essentia-*.rpm\` — shared library (\`libessentia.so\`, zero MKL runtime deps)
+          - \`essentia-devel-*.rpm\` — headers + \`essentia.pc\` pkg-config module
+
+          ### Installation
+          \`\`\`bash
+          sudo dnf install --nogpgcheck essentia-*.rpm essentia-devel-*.rpm
+          \`\`\`
+
+          ### CMake
+          \`\`\`cmake
+          pkg_check_modules(essentia GLOBAL REQUIRED IMPORTED_TARGET essentia)
+          \`\`\`" \
+            || true  # ignore error if release already exists
+
+          # Upload all built RPMs to the release
+          find ~/rpmbuild/RPMS -name "*.rpm" | while read rpm; do
+            gh release upload "${TAG}" "${rpm}" \
+              --repo "${{ github.repository }}" \
+              --clobber
+          done

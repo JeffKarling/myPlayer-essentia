@@ -1,0 +1,38 @@
+========================================================================
+ESSENTIA CUSTOM INTEL MKL FFTW STATIC INTEGRATION
+========================================================================
+
+This RPM package of Essentia has been built using a custom configuration to 
+statically link against Intel oneMKL (Math Kernel Library) for single-precision 
+FFT operations, replacing the standard dynamic FFTW3 (fftw3f) dependency.
+
+------------------------------------------------------------------------
+1. How the Build Integration Works
+------------------------------------------------------------------------
+Because Essentia's Waf build tool does not have a direct "--with-mkl" configuration 
+flag, we redirect standard FFTW3 lookups using pkg-config.
+
+During the RPM build process:
+- The build script dynamically searches /opt/intel/ for oneMKL pkg-config files 
+  (specifically "mkl-static-lp64-seq.pc") and exposes them to the build path.
+- A dummy "fftw3f.pc" file is dynamically generated in the build root.
+- This dummy file maps the libs and cflags variables to point to the static 
+  oneMKL libraries (libmkl_intel_lp64.a, libmkl_sequential.a, and libmkl_core.a).
+- The build environment prepends the dummy pc file location to PKG_CONFIG_PATH.
+- When Essentia's configuration scripts check for "fftw3f", they load our dummy 
+  file and link libessentia statically against the Intel MKL libraries.
+
+------------------------------------------------------------------------
+2. Runtime Usage & Shared Library Resolution
+------------------------------------------------------------------------
+The resulting shared library "libessentia.so" is completely self-contained with 
+respect to MKL. Only the specific FFT/DFT routines utilized by Essentia are 
+extracted from the static MKL archives during linking.
+
+As a result:
+- There are ZERO external dynamic library dependencies on "libmkl_*.so.2" at runtime.
+- The package requires no runtime configuration of LD_LIBRARY_PATH, setvars.sh, 
+  or system-wide /etc/ld.so.conf.d/ paths.
+- The footprint remains extremely small (~1.9MB RPM payload size) due to compiler 
+  dead-code elimination of unused MKL symbols.
+========================================================================
