@@ -8,7 +8,7 @@ Summary:        Library for audio analysis and audio-based music information ret
 License:        GPL-3.0-or-later
 URL:            https://essentia.upf.edu/
 
-# Sourced from github.com/MTG/essentia
+# Sourced from github.com/MTG/essentia (v2.1_beta5 base, repackaged as 2.1_beta6)
 Source0:        essentia-%{version}.tar.gz
 Source1:        README.MKL
 
@@ -101,5 +101,5 @@ cp README.MKL "%{buildroot}%{_datadir}/doc/%{name}/"
 %{_libdir}/pkgconfig/essentia.pc
 
 %changelog
-* Thu Jun 19 2026 Developer <developer@example.com> - 2.1_beta6-1
+* Fri Jun 19 2026 Developer <developer@example.com> - 2.1_beta6-1
 - Initial essentia package with static Intel MKL FFT integration

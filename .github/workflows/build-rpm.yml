@@ -41,16 +41,20 @@ jobs:
 
       - name: Install Intel oneAPI MKL
         run: |
-          # Add Intel oneAPI repository
-          cat <<'EOF' > /etc/yum.repos.d/oneAPI.repo
-          [oneAPI]
-          name=Intel® oneAPI repository
-          baseurl=https://yum.repos.intel.com/oneapi
-          enabled=1
-          gpgcheck=1
-          repo_gpgcheck=1
-          gpgkey=https://yum.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB
-          EOF
+          # Add Intel oneAPI repository (python avoids heredoc indentation issues)
+          python3 -c "
+          import textwrap
+          content = textwrap.dedent('''
+              [oneAPI]
+              name=Intel® oneAPI repository
+              baseurl=https://yum.repos.intel.com/oneapi
+              enabled=1
+              gpgcheck=1
+              repo_gpgcheck=1
+              gpgkey=https://yum.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB
+          ''').strip()
+          open('/etc/yum.repos.d/oneAPI.repo', 'w').write(content + '\n')
+          "
           dnf install -y intel-oneapi-mkl-devel
 
       - name: Checkout repository
@@ -65,10 +69,20 @@ jobs:
 
       - name: Download upstream essentia source tarball
         run: |
-          # Download MTG/essentia v2.1_beta6 source and rename to match spec Source0
-          curl -L \
-            "https://github.com/MTG/essentia/archive/v2.1_beta6.tar.gz" \
-            -o ~/rpmbuild/SOURCES/essentia-2.1_beta6.tar.gz
+          # v2.1_beta6 is a local packaging label; upstream latest tag is v2.1_beta5.
+          # The GitHub API tarball endpoint handles redirects cleanly; the archive
+          # root dir is "MTG-essentia-<sha>" so we repack it as "essentia-2.1_beta6"
+          # to match what %setup -q -n essentia-2.1_beta6 expects.
+          mkdir -p /tmp/essentia-unpack
+          curl -L --fail \
+            "https://api.github.com/repos/MTG/essentia/tarball/refs/tags/v2.1_beta5" \
+            -o /tmp/essentia-upstream.tar.gz
+          tar -xzf /tmp/essentia-upstream.tar.gz -C /tmp/essentia-unpack
+          UPSTREAM_DIR=$(ls /tmp/essentia-unpack/)
+          mv "/tmp/essentia-unpack/${UPSTREAM_DIR}" /tmp/essentia-unpack/essentia-2.1_beta6
+          tar -czf ~/rpmbuild/SOURCES/essentia-2.1_beta6.tar.gz \
+            -C /tmp/essentia-unpack essentia-2.1_beta6
+          rm -rf /tmp/essentia-unpack /tmp/essentia-upstream.tar.gz
 
       - name: Build RPMs
         run: |
