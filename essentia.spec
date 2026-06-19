@@ -15,6 +15,7 @@ Source1:        README.MKL
 BuildRequires:  python3
 BuildRequires:  gcc-c++
 BuildRequires:  pkgconfig
+BuildRequires:  curl
 BuildRequires:  eigen3-devel
 BuildRequires:  libsamplerate-devel
 BuildRequires:  taglib-devel
@@ -43,6 +44,10 @@ The pkg-config module name is "essentia"; use:
 %prep
 %setup -q -n essentia-%{version}
 cp "%{SOURCE1}" .
+# The bundled waf (2.0.10) imports the 'imp' module removed in Python 3.12+.
+# Fedora 42 ships Python 3.14, so we replace waf with a compatible release.
+curl -L --fail https://waf.io/waf-2.0.27 -o waf
+chmod +x waf
 
 %build
 # Locate MKL pkgconfig directory — oneAPI installs under /opt/intel/oneapi/mkl/
